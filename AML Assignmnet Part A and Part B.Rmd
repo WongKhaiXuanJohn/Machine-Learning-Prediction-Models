@@ -1,0 +1,523 @@
+---
+title: "AML Assignment Part A"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+dat <- read.csv("C:/Users/User/Desktop/APU's Documents/MSc Data Science & Business Analytics/Semester 1/Applied Machine Learning/Assignments/Datasets/Breast_cancer_data (use this).csv")
+```
+
+# ~~~~~~~~~~~~~~~~~~~~  Assignment Part B  ~~~~~~~~~~~~~~~~~~~~
+
+#EDA
+```{r}
+library(dplyr)
+library(DataExplorer)
+```
+
+```{r}
+dat$diagnosis <- as.factor(dat$diagnosis)
+```
+
+```{r}
+config <- configure_report(global_ggtheme = quote(theme_minimal(base_size = 14)))
+View(config)
+create_report(dat, y = "diagnosis", config=config)
+```
+
+```{r}
+plot_density(dat)
+```
+
+#Data cleaning
+```{r}
+# Check for duplication
+library(dplyr)
+duplicated(dat)
+```
+
+```{r}
+which.max(duplicated(dat))
+```
+
+```{r}
+dat_no_duplicated <- dat[!duplicated(dat), ]
+which(duplicated(dat_no_duplicated))
+nrow(dat_no_duplicated)
+```
+
+```{r}
+# Check for multicollinearity/ highly correlated variables
+library(DataExplorer)
+plot_correlation(dat_no_duplicated)
+```
+
+```{r}
+# Feature selection
+
+# Drop features related to perimeter and area, only retains radius
+dat_no_duplicated <- subset(dat_no_duplicated, select = -c(perimeter_mean,
+                                                     perimeter_se,
+                                                     area_mean,
+                                                     area_se))
+
+# Drop all features related to worst
+dat_no_duplicated <- subset(dat_no_duplicated, select = -c(radius_worst,
+                                                     texture_worst,
+                                                     perimeter_worst,
+                                                     area_worst,
+                                                     smoothness_worst,
+                                                     compactness_worst,
+                                                     concavity_worst,
+                                                     concave.points_worst,
+                                                     symmetry_worst,
+                                                     fractal_dimension_worst))
+
+# Drop features related to concavity and concave, only retains compactness
+dat_no_duplicated <- subset(dat_no_duplicated, select = -c(concavity_mean,
+                                                     concavity_se,
+                                                     concave.points_mean,
+                                                     concave.points_se))
+
+# Drop id feature
+dat_no_duplicated <- subset(dat_no_duplicated, select = -c(id))
+
+# Check number of features
+ncol(dat_no_duplicated)
+```
+
+```{r}
+# Convert diagnosis to factor
+dat_no_duplicated$diagnosis <- factor(dat_no_duplicated$diagnosis, 
+                                      levels = c("B", "M"),
+                                      labels = c(0, 1))
+```
+
+#Splitting 
+```{r}
+# Data Splitting 
+dat_clean <- dat_no_duplicated
+library(caTools)
+set.seed(814)
+split <- sample.split(dat_clean$diagnosis, SplitRatio = 0.7)
+train_set <- subset(dat_clean, split == TRUE)
+test_set <- subset(dat_clean, split == FALSE)
+```
+
+```{r}
+# Total rows in train and test sets
+nrow(train_set)
+nrow(test_set)
+```
+
+```{r}
+# Check for class distribution
+prop.table(table(dat_clean$diagnosis))
+prop.table(table(train_set$diagnosis))
+prop.table(table(test_set$diagnosis))
+```
+
+# Summary of train and test sets
+```{r}
+summary(train_set)
+summary(test_set)
+```
+
+
+#Scaling for splitted data
+```{r}
+train_set[, 1:12] <- scale(train_set[, 1:12])
+summary(train_set)
+test_set[, 1:12] <- scale(test_set[, 1:12])
+summary(test_set)
+```
+
+
+# Logistic Regression #
+```{r}
+# Build model for test set 
+logistic_regression <- glm(diagnosis ~., train_set, family = binomial)
+summary(logistic_regression)
+```
+
+# LR Test set
+```{r}
+# Prediction of test set
+lr_predict_test_set <- predict(logistic_regression, type = "response", test_set[, -13])
+head(lr_predict_test_set, n =10L)
+```
+
+```{r}
+lr_predict_test_set1 <- ifelse(lr_predict_test_set > 0.5, 1, 0)
+head(lr_predict_test_set1, n = 10L)
+```
+
+
+```{r}
+#Confusion Matrix for test set
+library(caret)
+lr_cm_test_set <- table(test_set$diagnosis, lr_predict_test_set1)
+confusionMatrix(lr_cm_test_set)
+```
+
+# LR Train set
+```{r}
+# Prediction of train set
+lr_predict_train_set <- predict(logistic_regression, type = "response", train_set[, -13])
+head(lr_predict_train_set, n =10L)
+```
+
+```{r}
+lr_predict_train_set1 <- ifelse(lr_predict_train_set > 0.5, 1, 0)
+head(lr_predict_train_set1, n = 10L)
+```
+
+
+```{r}
+#Confusion Matrix for train set
+library(caret)
+lr_cm_train_set <- table(train_set$diagnosis, lr_predict_train_set1)
+confusionMatrix(lr_cm_train_set)
+```
+
+```{r}
+# Train accuracy 94.72% > Test Accuracy 94.15%
+# Slightly over fit but consider as good fit
+```
+
+#LR ROC test set
+```{r}
+roc_prediction <- prediction(lr_predict_test_set, test_set$diagnosis)
+
+roc_performance <- performance(roc_prediction, "tpr", "fpr")
+
+plot(roc_performance, 
+     print.cutoffs.at=seq(0,1,0.3), 
+     text.adj= c(-0.2,1.7), 
+     colorize = T)
+```
+
+#LR AUC
+```{r}
+auc <- performance(roc_prediction, "auc")@y.values
+auc
+```
+
+# LR Hyperparameter tuning
+```{r}
+lr_control <- trainControl(method = "repeatedcv", 
+                           number = 10, 
+                           repeats = 3,
+                           search = "grid")
+
+lr_fit_cv <- train(diagnosis ~., train_set,
+                   method = "glmnet",
+                   trControl = lr_control,
+                   preProcess = c("center", "scale"),
+                   tuneLength = 50,
+                   tuneGrid = expand.grid(alpha = 0:1, 
+                                          lambda = seq(0.0001, 1, length = 50)))
+```
+
+```{r}
+print(lr_fit_cv)
+```
+
+```{r}
+plot(lr_fit_cv)
+```
+
+# LR Hyperparameter tuning in test set
+```{r}
+lr_hyperparameter_test_set <- predict(lr_fit_cv,
+                                      method = "response",
+                                      test_set[, -13])
+```
+
+```{r}
+# Confusion matrix on hyperparameter tuning test set
+lr_hyperparameter_test_set1 <- table(test_set$diagnosis, lr_hyperparameter_test_set)
+confusionMatrix(lr_hyperparameter_test_set1)
+```
+
+# LR Hyperparameter tuning in train set
+```{r}
+lr_hyperparameter_train_set <- predict(lr_fit_cv,
+                                      method = "response",
+                                      train_set[, -13])
+```
+
+```{r}
+# Confusion matrix on hyperparameter tuning train set
+lr_hyperparameter_train_set1 <- table(train_set$diagnosis, lr_hyperparameter_train_set)
+confusionMatrix(lr_hyperparameter_train_set1)
+```
+
+# SVM model #
+```{r}
+library(ggplot2)
+library(e1071)
+svm_model <- svm(diagnosis~., data = train_set, kernel = "poly")
+summary(svm_model)
+```
+```{r}
+svm_model$gamma
+```
+
+
+# SVM test set
+```{r}
+svm_predict_test_set <- predict(svm_model, test_set[, -13])
+svm_predict_test_set
+```
+
+```{r}
+# Confusiom matrix for test set
+svm_cm_test_set <- table(test_set$diagnosis, svm_predict_test_set)
+confusionMatrix(svm_cm_test_set)
+```
+
+# SVM train set
+```{r}
+svm_predict_train_set <- predict(svm_model, train_set[, -13])
+svm_predict_train_set
+```
+
+```{r}
+# Confusion matrix for train set
+svm_cm_train_set <- table(train_set$diagnosis, svm_predict_train_set)
+confusionMatrix(svm_cm_train_set)
+```
+
+```{r}
+# Train accuracy 91.21% > Test Accuracy 88.3%
+# Slightly over fit
+```
+
+# SVM ROC
+```{r}
+str(svm_predict_test_set)
+```
+
+
+```{r}
+svm_roc_prediction <- prediction(as.numeric(svm_predict_test_set), test_set$diagnosis)
+
+svm_roc_performance <- performance(svm_roc_prediction, "tpr", "fpr")
+
+plot(svm_roc_performance, 
+     print.cutoffs.at=seq(0,1,0.3), 
+     text.adj= c(1,1.7), 
+     colorize = T)
+```
+# SVM AUC
+```{r}
+svm_auc <- performance(svm_roc_prediction, "auc")@y.values
+svm_auc
+```
+
+# SVM Hyperparameter tuning
+```{r}
+svm_control <- tune(svm, diagnosis~ ., data=train_set,
+                    kernel = "poly",
+                    ranges = list(epsilon = seq (0, 1, 0.1), 
+                                  cost = 2^(0:2)))
+```
+
+```{r}
+summary(svm_control)
+```
+
+```{r}
+plot(svm_control)
+```
+
+# SVM Hyperparameter best model 
+```{r}
+svm_best_model <- svm(diagnosis~., data = train_set,
+                                    epsilon = 0, cost = 4)
+summary(svm_best_model)
+```
+
+# SVM Hyperparameter tuning in test set
+```{r}
+svm_hyperparameter_test_set <- predict(svm_best_model, test_set[, -13])
+svm_hyperparameter_test_set
+```
+
+```{r}
+# SVM Confusion matrix on hyperparameter tuning test set
+svm_hyperparameter_test_set1 <- table(test_set$diagnosis, svm_hyperparameter_test_set)
+confusionMatrix(svm_hyperparameter_test_set1)
+```
+
+# SVM Hyperparameter tuning in train set
+```{r}
+svm_hyperparameter_train_set <- predict(svm_best_model, train_set[, -13])
+svm_hyperparameter_train_set
+```
+
+```{r}
+# SVM Confusion matrix on hyperparameter tuning test set
+svm_hyperparameter_train_set1 <- table(train_set$diagnosis, svm_hyperparameter_train_set)
+confusionMatrix(svm_hyperparameter_train_set1)
+```
+
+# Spilt data for RF model(without scaling)
+```{r}
+set.seed(814)
+split_1 <- sample.split(dat_clean$diagnosis, SplitRatio = 0.7)
+train_set_1 <- subset(dat_clean, split == TRUE)
+test_set_1 <- subset(dat_clean, split == FALSE)
+```
+
+```{r}
+summary(train_set_1)
+summary(test_set_1)
+```
+
+# RF model
+```{r}
+# Build RF Model
+library(randomForest)
+set.seed(609)
+rf_model <- randomForest(diagnosis ~., data = train_set_1)
+attributes(rf_model)
+print(rf_model)
+```
+
+# RF test set
+```{r}
+# Prediction of test set
+rf_predict_test_set <- predict(rf_model, test_set_1[, -13])
+rf_predict_test_set
+```
+
+# RF Confusion matrix for test set
+```{r}
+rf_predict_test_set_1 <- table(test_set_1$diagnosis, rf_predict_test_set)
+confusionMatrix(rf_predict_test_set_1)
+```
+
+# RF train set
+```{r}
+# Prediction of train set
+rf_predict_train_set <- predict(rf_model, train_set_1[, -13])
+rf_predict_train_set
+```
+
+# RF confusion matrix for train set
+```{r}
+rf_predict_train_set_1 <- table(train_set_1$diagnosis, rf_predict_train_set)
+confusionMatrix(rf_predict_train_set_1)
+```
+
+```{r}
+# Train accuracy 100% > Test Accuracy 94.15%
+# Over fit
+```
+
+
+# Error rate of RF
+```{r}
+plot(rf_model)
+```
+
+# RF ROC 
+```{r}
+rf_roc_prediction <- prediction(as.numeric(rf_predict_test_set), test_set$diagnosis)
+
+rf_roc_performance <- performance(rf_roc_prediction, "tpr", "fpr")
+
+plot(rf_roc_performance, 
+     print.cutoffs.at=seq(0,1,0.3), 
+     text.adj= c(1,1.7), 
+     colorize = T)
+```
+
+# RF AUC
+```{r}
+rf_auc <- performance(rf_roc_prediction, "auc")@y.values
+rf_auc
+```
+
+# RF hyperparameter tuning
+# Search for the best mtry to do bagging
+```{r}
+tuneRF(train_set_1[ ,-13], train_set_1$diagnosis,
+      stepFactor=0.5,
+      plot = TRUE,
+      ntreeTry = 300,
+      trace = TRUE,
+      improve = 0.05)
+```
+
+# RF hyperparameter tuned model
+# Bagging
+```{r}
+rf_model_tuned <- randomForest(diagnosis ~., data = train_set_1,
+                               ntree = 300,
+                               mtry = 6,
+                               importance = TRUE,
+                               proximity = TRUE)
+rf_model_tuned
+```
+
+# RF hyperparameter tuning in test set
+```{r}
+rf_hyperparameter_test_set <- predict(rf_model_tuned, test_set_1[, -13])
+rf_hyperparameter_test_set
+```
+
+```{r}
+# Confusion matrix for test set
+rf_hyperparameter_test_set_1 <- table(test_set_1$diagnosis, rf_hyperparameter_test_set)
+confusionMatrix(rf_hyperparameter_test_set_1)
+```
+
+# RF hyperparameter tuning in train set
+```{r}
+rf_hyperparameter_train_set <- predict(rf_model_tuned, train_set_1[, -13])
+rf_hyperparameter_train_set
+```
+
+```{r}
+# Confusion matrix for train set
+rf_hyperparameter_train_set_1 <- table(train_set_1$diagnosis, 
+                                       rf_hyperparameter_train_set)
+confusionMatrix(rf_hyperparameter_train_set_1)
+```
+
+# Number of nodes of trees after tuned
+```{r}
+hist(treesize(rf_model),
+     main = "No. of nodes for trees",
+     col = "yellow")
+```
+
+```{r}
+varImpPlot(rf_model_tuned)
+```
+
+```{r}
+importance(rf_model_tuned)
+```
+
+```{r}
+varUsed(rf_model_tuned)
+```
+
+
+
+
+
+
+
+
