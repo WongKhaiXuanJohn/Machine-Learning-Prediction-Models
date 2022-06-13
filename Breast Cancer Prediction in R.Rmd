@@ -1,5 +1,5 @@
 ---
-title: "AML Assignment Part A"
+title: "Breast Cancer Prediction in R"
 output:
   pdf_document: default
   html_document: default
@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
-dat <- read.csv("C:/Users/User/Desktop/APU's Documents/MSc Data Science & Business Analytics/Semester 1/Applied Machine Learning/Assignments/Datasets/Breast_cancer_data (use this).csv")
+dat <- read.csv("C:/Users/User/Desktop/Breast_cancer_data (use this).csv")
 ```
 
 # ~~~~~~~~~~~~~~~~~~~~  Assignment Part B  ~~~~~~~~~~~~~~~~~~~~
