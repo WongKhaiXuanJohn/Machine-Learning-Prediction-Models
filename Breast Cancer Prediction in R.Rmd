@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
-dat <- read.csv("C:/Users/User/Desktop/Breast_cancer_data (use this).csv")
+dat <- read.csv(" ")
 ```
 
 # ~~~~~~~~~~~~~~~~~~~~  Assignment Part B  ~~~~~~~~~~~~~~~~~~~~
